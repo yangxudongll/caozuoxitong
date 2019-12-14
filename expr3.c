@@ -39,6 +39,8 @@ char (*buf)[100];
 
 int in=0,out=0; 
 
+int *flag;
+
 //P、V操作的定义
 void P(int semid,int index){
 	struct sembuf sem;
@@ -72,18 +74,22 @@ void readBuf()
 	//打开源文件文件
 	FILE* fp=fopen("input.txt","r");
 	int fsize;
+	flag[1]=0;
 	while(1)
 	{
 		printf("read\n");
 		//信号灯P操作
 		P(semid,0);
 		//取文件中数据
+		//memset(buf[in],'\0',sizeof(buf[in]));
 		fsize=fread(buf[in],sizeof(char),size,fp);
 		//移动环形缓冲区指针
 		in=(in+1)%num;
 		//信号灯V操作
 		V(semid,1);
 		//if(文件结束)break;
+		flag[0]=fsize;
+		flag[1]++;
 		if(fsize!=size)
 		{
 			fclose(fp);
@@ -97,25 +103,31 @@ void writeBuf()
 	int fsize;
 	//创建目标文件
 	FILE* fw=fopen("output.txt","wb");
+
+	int i=1;
 	while(1)
 	{
-		printf("write\n");
+
 		//信号灯P操作
 		P(semid,1);
-		//fsize=strlen(buf[out]);
 		//写入文件
-		fsize=fwrite(buf[out],sizeof(char),size,fw);
+		if(i<flag[1] || flag[0]==size)
+			fwrite(buf[out],sizeof(char),size,fw);
+		else
+			fwrite(buf[out],sizeof(char),flag[0],fw);
 		//移动环形缓冲区指针
 		out=(out+1)%num;
 		//信号灯V操作
 		V(semid,0);
 		//if(数据结束)break;
-		if(fsize!=size)
+		printf("%d %d\n",i,flag[1]);
+		if(i==flag[1] && flag[0]!=size)
 		{
 			fclose(fw);	//关闭文件
-			printf("%d\n",fsize );
+			printf("抄写结束\n" );
 			break;
 		}
+		i++;
 	}
 	exit(0);
 
@@ -127,7 +139,11 @@ int main()
 	//创建key的共享内存组
 	shmid=shmget(key,sizeof(char[size])*num,IPC_CREAT|0666);
 	buf=shmat(shmid,0,SHM_R|SHM_W);
-	
+	int shm;
+	shm=shmget(1,sizeof(int)*2,IPC_CREAT|0666);
+	flag=shmat(shm,0,SHM_R|SHM_W);
+	flag[0]=0;
+	flag[1]=0;
 	//创建Key的信号灯
 	semid=semget(3,2,IPC_CREAT|0666);
 	//信号灯赋初值

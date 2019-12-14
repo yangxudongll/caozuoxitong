@@ -181,3 +181,5 @@ void V(int semid,int index)
 	semop(semid,&sem,1);//1表示执行命令的个数
 	return;
 }
+
+杨旭东
