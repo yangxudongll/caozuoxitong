@@ -1,0 +1,183 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/sem.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/wait.h>
+#include <string.h>
+
+//本来此结构应该包含山linux/sem.h中,但是一旦
+//包含linux/sem.h就会出现许多重定义的问题
+union semun {
+	int val; 
+	struct semid_ds *buf;
+	unsigned short *array; 
+	struct seminfo *__buf; 
+};
+
+void readBuf();
+void writeBuf();
+
+void P(int semid,int index);
+void V(int semid,int index);
+
+int child1;
+int child2;
+
+//共享存储区名字
+key_t key;
+//缓冲区大小
+const int size=1024;
+//环形缓冲数量
+const int num=10;
+//缓冲区队列
+char (*buf)[1014];
+
+//权限
+int flag=IPC_CREAT|0666;   
+//信号灯
+int semid;
+
+//虚拟地址
+int *addr;
+
+int in,out;  //环形缓冲区输入输出指针
+
+int lastsave,if_finish;  //最后一次存入的字节数,读完标志
+
+int main()
+{
+	//创建key的共享内存组
+	int shmid;
+	shmid=shmget(key,sizeof(char[size])*num,flag);
+	buf=shmat(shmid,0,SHM_R|SHM_W);
+	
+	//创建Key的信号灯
+	semid=semget(3,2,IPC_CREAT|0666);
+	//信号灯赋初值
+	union semun a1;
+	a1.val=num;
+	semctl(semid,0,SETVAL,a1);//表示设置信号灯集semid中0号信号灯的值为1
+	a1.val=0;
+	semctl(semid,1,SETVAL,a1);
+
+	in=0;
+	out=0;
+	lastsave=0;
+	if_finish=0;
+	//创建两个子进程
+	child1=fork();
+	if(child1==0)   //子进程1
+	{
+		readBuf();
+	}
+	else    //父进程
+	{
+		child2=fork();
+		if(child2==0)
+		{
+			writeBuf();
+		}
+					//子进程2
+	}
+	
+	//等待子进程结束
+	waitpid(child1,NULL,0);
+	waitpid(child2,NULL,0);
+	printf("抄写工作结束\n");
+	//删除信号灯
+	//IPC_RMID表示将信号灯从内存中删除
+	semctl(semid,0,IPC_RMID);
+	
+	//删除共享内存组
+	shmdt(addr);
+	shmctl(shmid,IPC_RMID,0);
+	return 0;
+}
+
+void readBuf()
+{
+	//获取key的共享内存组
+
+
+	//建立数组形式的环形缓冲
+
+
+	//获取key的信号灯
+
+
+	//打开源文件文件
+	FILE* fp=fopen("input.txt","r");
+	while(1)
+	{
+		//信号灯P操作
+		P(semid,0);
+		//读文件,写入缓冲区
+		lastsave=fread(buf[in],sizeof(char),size,fp);
+		//移动环形缓冲区指针
+		in=(in+1)%num;
+		//信号灯V操作
+		V(semid,1);
+		//if(文件结束)break;
+		if(lastsave!=size)
+		{
+			if_finish=1;
+			break;
+		}
+	}
+	//关闭文件
+	fclose(fp);
+}
+void writeBuf()
+{
+	//获取key的共享内存组
+
+
+	//建立数组形式的环形缓冲
+
+	//获取key的信号灯
+
+	int fsize;
+	//创建目标文件
+	FILE* fw=fopen("output.txt","wb");
+	while(1)
+	{
+
+		//信号灯P操作
+		P(semid,1);	
+		//取缓冲区数据,写入文件
+		fsize=strlen(buf[out]);
+		fwrite(buf[out],sizeof(char),fsize,fw);
+		//if(数据结束)break;
+		if(fsize!=size)
+			break;
+		//移动环形缓冲区指针
+		out=(out+1)%num;
+		//信号灯V操作
+		V(semid,0);
+
+	}
+	//关闭文件
+	fclose(fw);
+}
+
+void P(int semid,int index)
+{
+	struct sembuf sem;
+	sem.sem_num=index;  //哪一个信号灯,index
+	sem.sem_op=-1;      //操作
+	sem.sem_flg=0;      //操作标志,一般置位0即可
+	semop(semid,&sem,1);
+	return;
+}
+void V(int semid,int index)
+{
+	struct sembuf sem;
+	sem.sem_num=index;
+	sem.sem_op=1;
+	sem.sem_flg=0;
+	semop(semid,&sem,1);//1表示执行命令的个数
+	return;
+}
