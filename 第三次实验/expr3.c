@@ -7,7 +7,7 @@
 #include <sys/shm.h>
 #include <sys/wait.h>
 #include <string.h>
-#define num 10
+#define num 10       //10个缓冲区
 
 //本来此结构应该包含山linux/sem.h中,但是一旦
 //包含linux/sem.h就会出现许多重定义的问题
@@ -37,9 +37,9 @@ int *addr;
 
 char (*buf)[100];
 
-int in=0,out=0; 
+int in=0,out=0;   //读写指针
 
-int *flag;
+int *flag;        //判断文件读完写完标志
 
 //P、V操作的定义
 void P(int semid,int index){
@@ -77,7 +77,6 @@ void readBuf()
 	flag[1]=0;
 	while(1)
 	{
-		printf("read\n");
 		//信号灯P操作
 		P(semid,0);
 		//取文件中数据
@@ -89,8 +88,8 @@ void readBuf()
 		V(semid,1);
 		//if(文件结束)break;
 		flag[0]=fsize;
-		flag[1]++;
-		if(fsize!=size)
+		flag[1]++;      //读取次数
+		if(fsize!=size)  //如果某次读到的字数少于100,说明文件结束了
 		{
 			fclose(fp);
 			break;
@@ -113,33 +112,30 @@ void writeBuf()
 		//写入文件
 		if(i<flag[1] || flag[0]==size)
 			fwrite(buf[out],sizeof(char),size,fw);
-		else
+		else                                              //如果已经读到了最后一个缓冲区,即文件的最后一部分
 			fwrite(buf[out],sizeof(char),flag[0],fw);
 		//移动环形缓冲区指针
 		out=(out+1)%num;
 		//信号灯V操作
 		V(semid,0);
 		//if(数据结束)break;
-		printf("%d %d\n",i,flag[1]);
 		if(i==flag[1] && flag[0]!=size)
 		{
 			fclose(fw);	//关闭文件
-			printf("抄写结束\n" );
 			break;
 		}
 		i++;
 	}
 	exit(0);
-
 }
-
-
 int main()
 {
 	//创建key的共享内存组
 	shmid=shmget(key,sizeof(char[size])*num,IPC_CREAT|0666);
 	buf=shmat(shmid,0,SHM_R|SHM_W);
 	int shm;
+
+	//创建两个int大小的共享区,用于存放文件每次读取到的大小和读取次数,方便判断文件是否结束
 	shm=shmget(1,sizeof(int)*2,IPC_CREAT|0666);
 	flag=shmat(shm,0,SHM_R|SHM_W);
 	flag[0]=0;
@@ -161,11 +157,10 @@ int main()
 	else    //父进程
 	{
 		child2=fork();
-		if(child2==0)
+		if(child2==0)		//子进程2
 		{
 			writeBuf();
 		}
-					//子进程2
 	}
 	
 	//等待子进程结束
@@ -177,7 +172,9 @@ int main()
 	semctl(semid,0,IPC_RMID);
 	
 	//删除共享内存组
-	shmdt(addr);
+	shmdt(buf);
+	shmdt(flag);
 	shmctl(shmid,IPC_RMID,0);
-
+	shmctl(shm,IPC_RMID,0);
+	return 0;
 }
