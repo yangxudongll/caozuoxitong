@@ -25,15 +25,13 @@ int child1;
 int child2;
 
 //共享存储区名字
-key_t key;
+key_t key=1000;
 //缓冲区大小
 const int size=100; 
 //信号灯集
 int semid;
 
 int shmid;
-//虚拟地址
-int *addr;
 
 char (*buf)[100];
 
@@ -62,14 +60,6 @@ void V(int semid,int index){
 
 void readBuf()
 {
-	//获取key的共享内存组
-
-
-	//建立数组形式的环形缓冲
-
-
-	//获取key的信号灯
-
 
 	//打开源文件文件
 	FILE* fp=fopen("input.txt","r");
@@ -134,14 +124,13 @@ int main()
 	shmid=shmget(key,sizeof(char[size])*num,IPC_CREAT|0666);
 	buf=shmat(shmid,0,SHM_R|SHM_W);
 	int shm;
-
 	//创建两个int大小的共享区,用于存放文件每次读取到的大小和读取次数,方便判断文件是否结束
-	shm=shmget(1,sizeof(int)*2,IPC_CREAT|0666);
+	shm=shmget(3000,sizeof(int)*2,IPC_CREAT|0666);
 	flag=shmat(shm,0,SHM_R|SHM_W);
 	flag[0]=0;
 	flag[1]=0;
 	//创建Key的信号灯
-	semid=semget(3,2,IPC_CREAT|0666);
+	semid=semget(2000,2,IPC_CREAT|0666);
 	//信号灯赋初值
 	union semun a1;
 	a1.val=num;
@@ -152,14 +141,16 @@ int main()
 	child1=fork();
 	if(child1==0)   //子进程1
 	{
-		readBuf();
+		execv("./readtxt",NULL);
+		//readBuf();
 	}
 	else    //父进程
 	{
 		child2=fork();
 		if(child2==0)		//子进程2
 		{
-			writeBuf();
+			execv("./writetxt",NULL);
+			//writeBuf();
 		}
 	}
 	
@@ -169,12 +160,12 @@ int main()
 	printf("抄写工作结束\n");
 	//删除信号灯
 	//IPC_RMID表示将信号灯从内存中删除
-	semctl(semid,0,IPC_RMID);
+/*	semctl(semid,0,IPC_RMID);
 	
 	//删除共享内存组
 	shmdt(buf);
 	shmdt(flag);
 	shmctl(shmid,IPC_RMID,0);
-	shmctl(shm,IPC_RMID,0);
+	shmctl(shm,IPC_RMID,0);*/
 	return 0;
 }
